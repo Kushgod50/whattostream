@@ -178,14 +178,50 @@ After ALL searches, return ONLY valid JSON (no markdown, no backticks):
           messages: [{ role: "user", content: prompt }]
         })
       });
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(`API error ${resp.status}: ${JSON.stringify(errData)}`);
+      }
+
       const data = await resp.json();
-      const text = data.content.map(b => b.type === "text" ? b.text : "").join("");
-      const clean = text.replace(/```json|```/g, "").trim();
-      const si = clean.indexOf("{"), ei = clean.lastIndexOf("}");
-      setResult(JSON.parse(clean.slice(si, ei + 1)));
+
+      // Extract all text blocks — web search responses have multiple content blocks
+      const text = (data.content || [])
+        .filter(b => b.type === "text")
+        .map(b => b.text || "")
+        .join("");
+
+      if (!text) throw new Error("No text response received from Claude.");
+
+      // Find the outermost JSON object in the response
+      const si = text.indexOf("{");
+      const ei = text.lastIndexOf("}");
+      if (si === -1 || ei === -1) throw new Error("Claude didn't return JSON. Raw: " + text.slice(0, 200));
+
+      const parsed = JSON.parse(text.slice(si, ei + 1));
+
+      // Ensure all array fields exist so .map() never crashes
+      const safe = {
+        channelInsight: parsed.channelInsight || "Analysis complete — see recommendations below.",
+        channelStats: Array.isArray(parsed.channelStats) ? parsed.channelStats : [],
+        dataSources: Array.isArray(parsed.dataSources) ? parsed.dataSources : [],
+        game: parsed.game || "Game not found",
+        gameReason: parsed.gameReason || "",
+        gameStats: Array.isArray(parsed.gameStats) ? parsed.gameStats : [],
+        dayData: Array.isArray(parsed.dayData) ? parsed.dayData : [],
+        competitors: Array.isArray(parsed.competitors) ? parsed.competitors : [],
+        backupGame: parsed.backupGame || "",
+        backupReason: parsed.backupReason || "",
+        bestTime: parsed.bestTime || "See analysis",
+        timeReason: parsed.timeReason || "",
+        tips: Array.isArray(parsed.tips) ? parsed.tips : [],
+      };
+
+      setResult(safe);
       setPhase("result");
     } catch (e) {
-      setError("Something went wrong — " + e.message);
+      setError("Something went wrong — " + e.message + ". Please try again.");
       setPhase("result");
     }
   }
@@ -229,8 +265,12 @@ If current data is needed, use web_search now. Answer conversationally, under 20
         })
       });
       const data = await resp.json();
-      const reply = data.content.map(b => b.type === "text" ? b.text : "").join("").trim();
-      setMessages(prev => [...prev, { role: "ai", content: reply || "Sorry, try again." }]);
+      const reply = (data.content || [])
+        .filter(b => b.type === "text")
+        .map(b => b.text || "")
+        .join("")
+        .trim();
+      setMessages(prev => [...prev, { role: "ai", content: reply || "Sorry, I couldn't get a response. Please try again." }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: "ai", content: "Something went wrong. Please try again." }]);
     }
