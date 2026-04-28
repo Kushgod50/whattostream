@@ -254,25 +254,43 @@ Question: "${input}"
 If current data is needed, use web_search now. Answer conversationally, under 200 words, use <strong> for key points. Be direct and actionable.`;
 
     try {
-      const resp = await fetch("/api/claude", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 600,
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
-          messages: [{ role: "user", content: prompt }]
-        })
-      });
-      const data = await resp.json();
-      const reply = (data.content || [])
-        .filter(b => b.type === "text")
-        .map(b => b.text || "")
-        .join("")
-        .trim();
-      setMessages(prev => [...prev, { role: "ai", content: reply || "Sorry, I couldn't get a response. Please try again." }]);
+      // Web search may need multiple turns — run agentic loop up to 5 rounds
+      let msgs = [{ role: "user", content: prompt }];
+      let reply = "";
+      for (let i = 0; i < 5; i++) {
+        const resp = await fetch("/api/claude", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 1000,
+            tools: [{ type: "web_search_20250305", name: "web_search" }],
+            messages: msgs
+          })
+        });
+        const data = await resp.json();
+        const blocks = data.content || [];
+        const text = blocks.filter(b => b.type === "text").map(b => b.text || "").join("").trim();
+        if (text) reply = text;
+        if (data.stop_reason !== "tool_use") break;
+        // Feed tool results back for next turn
+        msgs = [
+          ...msgs,
+          { role: "assistant", content: blocks },
+          {
+            role: "user",
+            content: blocks
+              .filter(b => b.type === "tool_use")
+              .map(b => ({ type: "tool_result", tool_use_id: b.id, content: "Search completed." }))
+          }
+        ];
+      }
+      setMessages(prev => [...prev, {
+        role: "ai",
+        content: reply || "I wasn't able to find a good answer — try rephrasing your question."
+      }]);
     } catch (e) {
-      setMessages(prev => [...prev, { role: "ai", content: "Something went wrong. Please try again." }]);
+      setMessages(prev => [...prev, { role: "ai", content: "Something went wrong: " + e.message }]);
     }
     setChatLoading(false);
   }
