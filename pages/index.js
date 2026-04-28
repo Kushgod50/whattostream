@@ -172,14 +172,7 @@ After ALL searches, return ONLY valid JSON (no markdown, no backticks):
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 2500,
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
-          messages: [{ role: "user", content: prompt }]
-        })
-      });
-
-      if (!resp.ok) {
+          model: "claude-sonnet-4-6",
         const errData = await resp.json().catch(() => ({}));
         throw new Error(`API error ${resp.status}: ${JSON.stringify(errData)}`);
       }
@@ -258,7 +251,7 @@ If current data is needed, use web_search now. Answer conversationally, under 20
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 600,
           tools: [{ type: "web_search_20250305", name: "web_search" }],
           messages: [{ role: "user", content: prompt }]
