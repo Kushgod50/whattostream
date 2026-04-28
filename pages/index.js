@@ -173,6 +173,13 @@ After ALL searches, return ONLY valid JSON (no markdown, no backticks):
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
+          max_tokens: 2500,
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+
+      if (!resp.ok) {
         const errData = await resp.json().catch(() => ({}));
         throw new Error(`API error ${resp.status}: ${JSON.stringify(errData)}`);
       }
